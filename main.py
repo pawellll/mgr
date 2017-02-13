@@ -44,7 +44,7 @@ def conv_net(x, weights, biases, dropout):
 	# conv4 = conv2d(conv3, weights['wc4'], biases['bc4'])
 	# conv4 = max_pool(conv4)
 
-	fc1 = tf.reshape(conv4, [-1, weights['wd1'].get_shape().as_list()[0]])
+	fc1 = tf.reshape(conv3, [-1, weights['wd1'].get_shape().as_list()[0]])
 	fc1 = tf.add(tf.matmul(fc1, weights['wd1']), biases['bd1'])
 	fc1 = tf.nn.relu(fc1)
 
