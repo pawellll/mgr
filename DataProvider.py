@@ -1,5 +1,6 @@
 from os import listdir
 from os.path import isfile, join
+import tensorflow as tf
 import skimage.io
 import numpy
 from Configuration import Configuration as Config
@@ -43,13 +44,20 @@ class DataProvider:
         return image_files, image_labels
 
     def test_data_batch(self):
+        test_image_files = self._test_image_files[0:Config.batch_size]
+        test_labels = self._test_labels[0:Config.batch_size]
+
+        self._test_image_files = self._test_image_files[Config.batch_size:]
+        self._test_labels = self._test_labels[Config.batch_size:]
+
         images = list()
 
-        for file_path in self._test_image_files:
-            image = DataProvider.load_image(file_path)
+        for file_path in test_image_files:
+            image = self.load_image(file_path)
             images.append(image)
 
-        return numpy.array(images), numpy.array(self._test_labels)
+        return numpy.array(images), numpy.array(test_labels)
+
 
     def next_data_batch(self):
         if len(self._train_image_files) < Config.batch_size:
@@ -107,8 +115,25 @@ class DataProvider:
         return [item for vector in matrix for item in vector]
 
     @staticmethod
+    def add_noise(image):
+        # Randomly flip the image horizontally.
+        # distorted_image = tf.image.random_flip_left_right(distorted_image)
+
+        # Because these operations are not commutative, consider randomizing
+        # the order their operation.
+     # 	distorted_image = tf.image.random_brightness(image, max_delta=0.3)
+           
+    	# distorted_image = tf.image.random_contrast(distorted_image, lower=0.2, upper=1.5)
+
+     # 	with tf.Session() as sess:
+    	#     image = distorted_image.eval()
+
+        return image  
+
+    @staticmethod
     def load_image(image_file):
         image = skimage.io.imread(image_file).astype(numpy.float32)
+        image = DataProvider.add_noise(image)
         image = DataProvider.flatten(image)
         image[:] = [value / 255.0 for value in image]
         return image

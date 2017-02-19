@@ -9,7 +9,7 @@ import time
 from DataProvider import DataProvider
 from Configuration import Configuration as Config
 
-img_size = 128
+img_size = 64
 inputN = img_size * img_size
 classesN = 2
 
@@ -33,16 +33,11 @@ def conv_net(x, weights, biases, dropout):
 	x = tf.reshape(x, shape=[-1, img_size, img_size, 3])
 
 	conv1 = conv2d(x, weights['wc1'], biases['bc1'])
-	conv1 = max_pool(conv1)
 
 	conv2 = conv2d(conv1, weights['wc2'], biases['bc2'])
-	conv2 = max_pool(conv2)
 
 	conv3 = conv2d(conv2, weights['wc3'], biases['bc3'])
 	conv3 = max_pool(conv3)
-
-	# conv4 = conv2d(conv3, weights['wc4'], biases['bc4'])
-	# conv4 = max_pool(conv4)
 
 	fc1 = tf.reshape(conv3, [-1, weights['wd1'].get_shape().as_list()[0]])
 	fc1 = tf.add(tf.matmul(fc1, weights['wd1']), biases['bd1'])
@@ -57,42 +52,37 @@ def conv_net(x, weights, biases, dropout):
 def get_weights_and_biases():
 	
 	init_wc1 = np.sqrt(2.0/(3*img_size**2))
-	init_wc2 = np.sqrt(2.0/(55*55*96)) 
-	init_wc3 = np.sqrt(2.0/(27*27*64)) 
-	# init_wc4 = np.sqrt(2.0/(3*5*5*64))
+	init_wc2 = np.sqrt(2.0/(3*3*64)) 
+	init_wc3 = np.sqrt(2.0/(3*3*64)) 
 
-	init_wd1 = np.sqrt(2.0/(32*8*8))
+	init_wd1 = np.sqrt(2.0/(64*32*32))
 
-	init_out = np.sqrt(2.0/1024)
+	init_out = np.sqrt(2.0/512)
 
 	weights = {
 
 		# 7x7 conv, 3 input, 64 outputs
-		'wc1': tf.Variable(init_wc1 * tf.random_normal([55, 55, 3, 96])),
+		'wc1': tf.Variable(init_wc1 * tf.random_normal([3, 3, 3, 64])),
 
 		# 7x7 conv, 64 inputs, 64 outputs
-		'wc2': tf.Variable(init_wc2 * tf.random_normal([27, 27, 96, 256])),
+		'wc2': tf.Variable(init_wc2 * tf.random_normal([3, 3, 64, 64])),
 
 		# 5x5 conv, 64 inputs, 64 outputs
-		'wc3': tf.Variable(init_wc3 * tf.random_normal([13, 13, 256, 384])),
+		'wc3': tf.Variable(init_wc3 * tf.random_normal([3, 3, 64, 64])),
 
-		# 5x5 conv, 64 inputs, 32 outputs
-		# 'wc4': tf.Variable(init_wc4 * tf.random_normal([5, 5, 64, 32])),
-
-		# fully connected, 8x8 - image size after 3 max_pooling (128/2/2/2/2)
+		# fully connected, 8x8 - image size after 3 max_pooling (64/2/2/2/2)
 		# x 32 - 32 outputs from previous layer
-		'wd1': tf.Variable(init_wd1 * tf.random_normal([384*16*16, 1024])),
+		'wd1': tf.Variable(init_wd1 * tf.random_normal([64*32*32, 512])),
 
 		# 1024 inputs, 2 outputs (class prediction)
-		'out': tf.Variable(init_out * tf.random_normal([1024, classesN]))
+		'out': tf.Variable(init_out * tf.random_normal([512, classesN]))
 	}
 
 	biases = {
-		'bc1': tf.Variable(0.1 * tf.random_normal([96])),
-		'bc2': tf.Variable(0.1 * tf.random_normal([256])),
-		'bc3': tf.Variable(0.1 * tf.random_normal([384])),
-		'bc4': tf.Variable(0.1 * tf.random_normal([32])),
-		'bd1': tf.Variable(0.1 * tf.random_normal([1024])),
+		'bc1': tf.Variable(0.1 * tf.random_normal([64])),
+		'bc2': tf.Variable(0.1 * tf.random_normal([64])),
+		'bc3': tf.Variable(0.1 * tf.random_normal([64])),
+		'bd1': tf.Variable(0.1 * tf.random_normal([512])),
 		'out': tf.Variable(0.1 * tf.random_normal([classesN]))
 	}
 
@@ -108,7 +98,7 @@ def open_result_file():
 
 
 def read_command_line():
-	return int(sys.argv[1]), int(sys.argv[2])
+	return int(sys.argv[1]), int(sys.argv[2]), int(sys.argv[3])
 
 
 def create_submission(session, model, keep_prob, x, data_provider):
@@ -118,7 +108,7 @@ def create_submission(session, model, keep_prob, x, data_provider):
 
 	progress = 0
 
-	batch_size = 100
+	batch_size = 20
 	batch_x, file_paths = data_provider.submission_data_batch(batch_size)
 
 	while len(batch_x):
@@ -126,13 +116,83 @@ def create_submission(session, model, keep_prob, x, data_provider):
 		labels = pred_y.eval(feed_dict={x: batch_x, keep_prob: 1.}, session=session)
 		save_labels(submission_file, labels, file_paths)
 
-	progress = progress + len(batch_x)
-	print "analysed " + str(progress) + " images"
+		progress = progress + len(batch_x)
+		print "analysed " + str(progress) + " images"
 
-	batch_x, file_paths = data_provider.submission_data_batch(batch_size)
+		batch_x, file_paths = data_provider.submission_data_batch(batch_size)
 
 	submission_file.close()
 	print "Submission created"
+
+
+def evaluate(sess, x, y, accuracy, keep_prob, data_provider):
+	print "evaluating"
+
+	ckpt = tf.train.get_checkpoint_state(Config.CHECKPOINT_PATH)
+
+	if ckpt and ckpt.model_checkpoint_path:
+		saver = tf.train.Saver(tf.global_variables())
+		saver.restore(sess, ckpt.model_checkpoint_path)
+	else:
+		print "no model to be restored"
+		return 0.0
+
+	sumAcc = 0.0
+	testSize = 0;
+
+	batch_x, batch_y = data_provider.test_data_batch()
+
+	while(len(batch_x)):
+
+		acc = sess.run(accuracy, feed_dict={x: batch_x, y: batch_y, keep_prob: 1.})
+
+		print "testing accuracy:", acc
+
+		sumAcc += acc * len(batch_x);
+		testSize += len(batch_x);
+
+		batch_x, batch_y = data_provider.test_data_batch()
+
+
+def train(sess, x, y, optimizer, cost, accuracy, keep_prob, data_provider):
+	print "training"
+
+	saver = tf.train.Saver(tf.global_variables())
+
+	result_file = open_result_file()
+	register_quit(result_file)
+
+	start = time.time()
+
+	step = 1
+
+	while step * Config.batch_size < Config.training_iters:
+
+		batch_x, batch_y = data_provider.next_data_batch()
+
+		sess.run(optimizer, feed_dict={x: batch_x, y: batch_y, keep_prob: Config.dropout})
+
+		if step % Config.display_step == 0:
+			loss, acc = sess.run([cost, accuracy], feed_dict={x: batch_x, y: batch_y, keep_prob: 1.})
+			msg = "Iter " + str(step * Config.batch_size) + ", Minibatch Loss= " + \
+				  "{:.6f}".format(loss) + ", Training Accuracy= " + \
+				  "{:.5f}".format(acc)
+
+			print msg
+			result_file.write(msg + "\n")
+
+		if step % 20 == 0:
+			print "saving model"
+			saver.save(sess, os.path.join(Config.CHECKPOINT_PATH, 'model.ckpt'))
+
+		step += 1
+
+	end = time.time()
+
+	print "Training Finished! " + str(end - start) + "ms elapsed\n"
+
+	saver.save(sess, os.path.join(Config.CHECKPOINT_PATH, 'model.ckpt'))		
+
 
 
 def save_labels(submission_file, labels, file_paths):
@@ -141,21 +201,19 @@ def save_labels(submission_file, labels, file_paths):
 		submission_file.write(str(image_number) + "," + str(label) + "\n")
 
 def print_help():
-	print "Two few arguments"
-	print "main.py <should_train> <should_evaluate>"
-	print "For example: main.py 1 0"
+	print "Too few arguments"
+	print "main.py <should_train> <should_evaluate> <should_create_kaggle_submission>"
+	print "For example: main.py 1 0 0"
 
 def check_arguments_and_maybe_exit():
-	if (len(sys.argv) < 3) :
+	if (len(sys.argv) < 4) :
 			print_help()
 			sys.exit()
 
 def main():
 	check_arguments_and_maybe_exit()
 
-	train_flag, eval_flag = read_command_line()
-	result_file = open_result_file()
-	register_quit(result_file)
+	train_flag, eval_flag, submission_flag = read_command_line()
 
 	weights, biases = get_weights_and_biases()
 
@@ -182,48 +240,14 @@ def main():
 		saver = tf.train.Saver(tf.global_variables())
 
 		if train_flag:
-			start = time.time()
-
-			step = 1
-
-			while step * Config.batch_size < Config.training_iters:
-
-				batch_x, batch_y = data_provider.next_data_batch()
-
-				sess.run(optimizer, feed_dict={x: batch_x, y: batch_y, keep_prob: Config.dropout})
-
-				if step % Config.display_step == 0:
-					loss, acc = sess.run([cost, accuracy], feed_dict={x: batch_x, y: batch_y, keep_prob: 1.})
-					msg = "Iter " + str(step * Config.batch_size) + ", Minibatch Loss= " + \
-						  "{:.6f}".format(loss) + ", Training Accuracy= " + \
-						  "{:.5f}".format(acc)
-
-					print msg
-					result_file.write(msg + "\n")
-
-				if step % 20 == 0:
-					print "saving model"
-					saver.save(sess, os.path.join(Config.CHECKPOINT_PATH, 'model.ckpt'))
-
-				step += 1
-
-			end = time.time()
-
-			print "Training Finished! " + str(end - start) + "ms elapsed\n"
-
-			saver.save(sess, os.path.join(Config.CHECKPOINT_PATH, 'model.ckpt'))
+			train(sess, x, y, optimizer, cost, accuracy, keep_prob, data_provider)
 
 		if eval_flag:
+			acc = evaluate(sess, x, y, accuracy, keep_prob, data_provider)
+			print "Overall testing Accuracy:", acc
 
-			ckpt = tf.train.get_checkpoint_state(Config.CHECKPOINT_PATH)
-
-			if ckpt and ckpt.model_checkpoint_path:
-				saver.restore(sess, ckpt.model_checkpoint_path)
-				batch_x, batch_y = data_provider.test_data_batch()
-
-			print "Testing Accuracy:", sess.run(accuracy, feed_dict={x: batch_x, y: batch_y, keep_prob: 1.})
-
-			# create_submission(sess, model, keep_prob, x, data_provider)
+		if submission_flag:
+			create_submission(sess, model, keep_prob, x, data_provider)
 
 
 if __name__ == "__main__":
